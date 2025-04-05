@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Hand Gesture Detection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f8;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    h1, h2 {
+      color: #333;
+    }
+    form {
+      margin-bottom: 20px;
+    }
+    input[type="file"] {
+      margin: 10px 0;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .image-section, .webcam-section {
+      margin-top: 30px;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      margin-top: 10px;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+    }
+    .button-group {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Hand Gesture Detection</h1>
+
+  <!-- Upload Image/Video -->
+  <form action="/upload" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept="image/*,video/*" required />
+    <button type="submit">Upload & Detect</button>
+  </form>
+
+  <!-- Webcam Controls -->
+  <div class="webcam-section">
+    <h2>Real-Time Detection</h2>
+    <div class="button-group">
+      <button onclick="startWebcam()">Start Webcam</button>
+      <button onclick="stopWebcam()">Stop Webcam</button>
+    </div>
+    <img id="video_feed" src="" alt="Webcam Feed" />
+  </div>
+
+  <!-- Upload Result Display -->
+  {% if request.args.get('result') %}
+  <div class="image-section">
+    <h2>Detection Result</h2>
+    <img src="{{ url_for('static', filename='uploads/' + request.args.get('result')) }}" alt="Detected Result">
+  </div>
+  {% endif %}
+
+  <script>
+    function startWebcam() {
+      document.getElementById("video_feed").src = "/video_feed";
+    }
+
+    function stopWebcam() {
+      document.getElementById("video_feed").src = "";
+    }
+  </script>
+
+</body>
+</html>
