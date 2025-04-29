@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Hand Gesture Detection</title>
+  <title>Sign Language Detection</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -34,7 +34,7 @@
     }
 
     .footer {
-      margin-top: 40px;
+      margin-top: 20%;
       text-align: center;
       color: #6c757d;
     }
@@ -42,7 +42,7 @@
 </head>
 <body>
   <div class="container text-center">
-    <h1 class="title mb-4">🖐️ Hand Gesture Detection</h1>
+    <h1 class="title mb-4">Sign Language Detection</h1>
 
     <div class="card p-4 shadow-sm">
       <h5 class="mb-3">Upload an Image</h5>
@@ -70,8 +70,8 @@
       <img id="video_feed" class="preview" src="" alt="Webcam Feed" style="display: none;"/>
     </div>
 
-    <div class="footer mt-5">
-      <small>Made with ❤️ for real-time sign language detection</small>
+    <div class="footer">
+      <p>Copyright &#169; <span id="current-year"></span></p>
     </div>
   </div>
 
@@ -97,6 +97,8 @@
         stopWebcam();
       }
     };
+
+    document.getElementById("current-year").innerHTML = new Date().getFullYear();
   </script>
 </body>
 </html>
