@@ -1,18 +1,20 @@
-from flask import Flask, render_template, Response, request, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 import os
 import cv2
 import torch
 import numpy as np
 import pathlib
 import platform
-
-if platform.system() == 'Windows':
-    pathlib.PosixPath = pathlib.WindowsPath
-
 from werkzeug.utils import secure_filename
 from pathlib import Path
 import sys
+import base64
 
+# Windows path fix
+if platform.system() == 'Windows':
+    pathlib.PosixPath = pathlib.WindowsPath
+
+# Setup
 sys.path.append(str(Path(__file__).resolve().parent / 'yolov5'))
 
 from models.common import DetectMultiBackend
@@ -21,38 +23,41 @@ from utils.augmentations import letterbox
 from utils.torch_utils import select_device
 
 app = Flask(__name__)
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Load YOLOv5 model
 device = select_device('')
 model = DetectMultiBackend('models/best.pt', device=device)
 model.eval()
 
+# Resize & detect function
 def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
-    # Rescale coords (xyxy) from img1_shape to img0_shape
     if ratio_pad is None:
-        # Calculate from img0_shape
-        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
-        pad = ((img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2)  # wh padding
+        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])
+        pad = ((img1_shape[1] - img0_shape[1] * gain) / 2,
+               (img1_shape[0] - img0_shape[0] * gain) / 2)
     else:
         gain = ratio_pad[0][0]
         pad = ratio_pad[1]
 
-    coords[:, [0, 2]] -= pad[0]  # x padding
-    coords[:, [1, 3]] -= pad[1]  # y padding
+    coords[:, [0, 2]] -= pad[0]
+    coords[:, [1, 3]] -= pad[1]
     coords[:, :4] /= gain
-    coords[:, 0].clamp_(0, img0_shape[1])  # x1
-    coords[:, 1].clamp_(0, img0_shape[0])  # y1
-    coords[:, 2].clamp_(0, img0_shape[1])  # x2
-    coords[:, 3].clamp_(0, img0_shape[0])  # y2
+    coords[:, 0].clamp_(0, img0_shape[1])
+    coords[:, 1].clamp_(0, img0_shape[0])
+    coords[:, 2].clamp_(0, img0_shape[1])
+    coords[:, 3].clamp_(0, img0_shape[0])
     return coords
 
 def detect_frame(frame):
     img0 = frame.copy()
     img = letterbox(img0, new_shape=(640, 640))[0]
-    img = img.transpose((2, 0, 1))[::-1]  # BGR to RGB, to CHW
+    img = img.transpose((2, 0, 1))[::-1]
     img = np.ascontiguousarray(img)
-    
-    img = torch.from_numpy(img).to(device)
-    img = img.float() / 255.0
+
+    img = torch.from_numpy(img).to(device).float() / 255.0
     if img.ndimension() == 3:
         img = img.unsqueeze(0)
 
@@ -70,29 +75,10 @@ def detect_frame(frame):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
     return img0
 
-def generate_frames():
-    cap = cv2.VideoCapture(0)
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
-        frame = detect_frame(frame)
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-    cap.release()
-
+# Routes
 @app.route('/')
 def index():
     return render_template('index.html')
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-UPLOAD_FOLDER = 'static/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -107,15 +93,31 @@ def upload():
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
 
-    # Run detection on uploaded image
     frame = cv2.imread(file_path)
     result_img = detect_frame(frame)
-
-    # Save result image
-    result_path = os.path.join(app.config['UPLOAD_FOLDER'], 'result_' + filename)
+    result_path = os.path.join(app.config['UPLOAD_FOLDER'], f'result_{filename}')
     cv2.imwrite(result_path, result_img)
 
     return redirect(url_for('index', filename=filename))
 
+@app.route('/api/stream', methods=['POST'])
+def api_stream():
+    data = request.json.get('frame')
+    if not data:
+        return jsonify({'error': 'No frame received'}), 400
+
+    # Decode base64
+    img_data = base64.b64decode(data.split(',')[1])
+    np_arr = np.frombuffer(img_data, np.uint8)
+    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+    result_img = detect_frame(frame)
+
+    _, buffer = cv2.imencode('.jpg', result_img)
+    encoded_img = base64.b64encode(buffer).decode('utf-8')
+
+    return jsonify({'frame': f'data:image/jpeg;base64,{encoded_img}'})
+
+# Run
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5000)

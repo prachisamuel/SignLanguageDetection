@@ -10,17 +10,14 @@
       background: #f8f9fa;
       padding-top: 50px;
     }
-
     .container {
       max-width: 800px;
       margin: auto;
     }
-
     .title {
       font-weight: 700;
       color: #343a40;
     }
-
     .preview {
       width: 100%;
       max-height: 500px;
@@ -28,15 +25,16 @@
       border-radius: 8px;
       border: 2px solid #dee2e6;
     }
-
     .btn-custom {
       margin: 5px;
     }
-
     .footer {
-      margin-top: 20%;
+      margin-top: 10%;
       text-align: center;
       color: #6c757d;
+    }
+    #canvas_output {
+      display: none;
     }
   </style>
 </head>
@@ -44,61 +42,105 @@
   <div class="container text-center">
     <h1 class="title mb-4">Sign Language Detection</h1>
 
+    <!-- Upload Card -->
     <div class="card p-4 shadow-sm">
-      <h5 class="mb-3">Upload an Image</h5>
-      <form action="/upload" method="post" enctype="multipart/form-data" class="d-flex flex-column align-items-center" onsubmit="stopWebcam()">
+      <h5 class="mb-3">Upload Image or Video</h5>
+      <form id="uploadForm" class="d-flex flex-column align-items-center" enctype="multipart/form-data">
         <input type="file" name="file" accept="image/*,video/*" class="form-control mb-3" required style="max-width: 300px;">
         <button type="submit" class="btn btn-success btn-custom">📤 Upload & Detect</button>
       </form>
-      {% if request.args.get('filename') %}
-      <div id="uploadResult">
+      <div id="uploadResult" style="display:none;">
         <h5 class="mt-4">📸 Uploaded Detection Result</h5>
-        <img src="{{ url_for('static', filename='uploads/result_' + request.args.get('filename', '')) }}"
-            class="preview" alt="Result">
+        <img id="uploadResultImg" class="preview" alt="Result">
       </div>
-      {% else %}
-      <div id="uploadResult" style="display:none;"></div>
-      {% endif %}
     </div>
 
+    <!-- Webcam Card -->
     <div class="card p-4 mt-4 shadow-sm">
       <h5 class="mb-3">Real-Time Detection</h5>
       <div class="d-flex justify-content-center mb-3">
         <button class="btn btn-primary btn-custom" onclick="startWebcam()">▶️ Start Webcam</button>
         <button class="btn btn-danger btn-custom" onclick="stopWebcam()">⏹️ Stop Webcam</button>
       </div>
-      <img id="video_feed" class="preview" src="" alt="Webcam Feed" style="display: none;"/>
+      <video id="webcam" autoplay muted playsinline width="640" height="480" class="preview" style="display: none;"></video>
+      <canvas id="canvas_output" width="640" height="480" class="preview"></canvas>
     </div>
 
     <div class="footer">
-      <p>Copyright &#169; <span id="current-year"></span></p>
+      <p>© <span id="current-year"></span> Sign Language Detection</p>
     </div>
   </div>
 
   <script>
-    function startWebcam() {
-      const videoFeed = document.getElementById("video_feed");
-      const resultDiv = document.getElementById("uploadResult");
+    const webcam = document.getElementById("webcam");
+    const canvas = document.getElementById("canvas_output");
+    const ctx = canvas.getContext("2d");
+    let videoInterval;
 
-      videoFeed.src = "/video_feed";
-      videoFeed.style.display = "block";
-      resultDiv.style.display = "none";
+    async function startWebcam() {
+      stopUploadResult();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        webcam.srcObject = stream;
+        webcam.style.display = "block";
+        canvas.style.display = "block";
+
+        videoInterval = setInterval(() => {
+          ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(sendFrame, 'image/jpeg');
+        }, 200);
+      } catch (error) {
+        alert("Camera access denied or not available.");
+      }
     }
 
     function stopWebcam() {
-      const videoFeed = document.getElementById("video_feed");
-      videoFeed.src = "";
-      videoFeed.style.display = "none";
+      if (webcam.srcObject) {
+        webcam.srcObject.getTracks().forEach(track => track.stop());
+        webcam.srcObject = null;
+      }
+      clearInterval(videoInterval);
+      webcam.style.display = "none";
+      canvas.style.display = "none";
     }
 
-    window.onload = function () {
-      const resultShown = "{{ request.args.get('filename') }}" !== "";
-      if (resultShown) {
-        stopWebcam();
-      }
-    };
+    function sendFrame(blob) {
+      const formData = new FormData();
+      formData.append("frame", blob);
+      fetch("/api/stream", {
+        method: "POST",
+        body: formData
+      }).then(response => response.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.src = url;
+        img.onload = () => ctx.drawImage(img, 0, 0);
+      });
+    }
 
-    document.getElementById("current-year").innerHTML = new Date().getFullYear();
+    function stopUploadResult() {
+      const resultDiv = document.getElementById("uploadResult");
+      if (resultDiv) resultDiv.style.display = "none";
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      stopWebcam();
+      const form = e.target;
+      const formData = new FormData(form);
+
+      fetch("/upload", {
+        method: "POST",
+        body: formData
+      }).then(res => res.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const imgElement = document.getElementById("uploadResultImg");
+        imgElement.src = url;
+        document.getElementById("uploadResult").style.display = "block";
+      }).catch(() => alert("Upload failed"));
+    });
+
+    document.getElementById("current-year").textContent = new Date().getFullYear();
   </script>
 </body>
 </html>
